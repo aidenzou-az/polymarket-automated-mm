@@ -1,0 +1,286 @@
+from web3 import Web3
+try:
+    from web3.middleware import ExtraDataToPOAMiddleware
+except ImportError:
+    # For web3.py v6+, geth_poa_middleware is used instead
+    from web3.middleware import geth_poa_middleware
+    ExtraDataToPOAMiddleware = geth_poa_middleware
+from py_clob_client.client import ClobClient
+from py_clob_client.constants import POLYGON
+from dotenv import load_dotenv
+import os
+import math
+import poly_data.global_state as global_state
+
+load_dotenv()
+
+def get_clob_client():
+    host = "https://clob.polymarket.com"
+    key = os.getenv("PK")
+    browser_address = os.getenv("BROWSER_ADDRESS")
+    chain_id = POLYGON
+    web3 = Web3(Web3.HTTPProvider(os.getenv("POLYGON_RPC_URL", "https://polygon-rpc.com")))
+    # Add POA middleware for Polygon
+    try:
+        web3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+    except AttributeError:
+        # For web3.py v6+, middleware is added differently
+        web3.middleware_onion.inject(geth_poa_middleware, layer=0)
+    # Handle both old and new web3.py versions
+    if hasattr(Web3, 'to_checksum_address'):
+        checksum_address = Web3.to_checksum_address(browser_address)
+    else:
+        checksum_address = Web3.toChecksumAddress(browser_address)
+
+    return ClobClient(
+        host=host,
+        key=key,
+        chain_id=chain_id,
+        funder=checksum_address,
+        signature_type=2
+    )
+
+def get_best_bid_ask_deets(market, name, size, deviation_threshold=0.05):
+
+    best_bid, best_bid_size, second_best_bid, second_best_bid_size, top_bid = find_best_price_with_size(global_state.all_data[market]['bids'], size, reverse=True)
+    best_ask, best_ask_size, second_best_ask, second_best_ask_size, top_ask = find_best_price_with_size(global_state.all_data[market]['asks'], size, reverse=False)
+    
+    # Handle None values in mid_price calculation
+    if best_bid is not None and best_ask is not None:
+        mid_price = (best_bid + best_ask) / 2
+        bid_sum_within_n_percent = sum(size for price, size in global_state.all_data[market]['bids'].items() if best_bid <= price <= mid_price * (1 + deviation_threshold))
+        ask_sum_within_n_percent = sum(size for price, size in global_state.all_data[market]['asks'].items() if mid_price * (1 - deviation_threshold) <= price <= best_ask)
+    else:
+        mid_price = None
+        bid_sum_within_n_percent = 0
+        ask_sum_within_n_percent = 0
+
+    if name == 'token2':
+        # Handle None values before arithmetic operations
+        if all(x is not None for x in [best_bid, best_ask, second_best_bid, second_best_ask, top_bid, top_ask]):
+            best_bid, second_best_bid, top_bid, best_ask, second_best_ask, top_ask = 1 - best_ask, 1 - second_best_ask, 1 - top_ask, 1 - best_bid, 1 - second_best_bid, 1 - top_bid
+            best_bid_size, second_best_bid_size, best_ask_size, second_best_ask_size = best_ask_size, second_best_ask_size, best_bid_size, second_best_bid_size
+            bid_sum_within_n_percent, ask_sum_within_n_percent = ask_sum_within_n_percent, bid_sum_within_n_percent
+        else:
+            # Handle case where some prices are None - use available values or defaults
+            if best_bid is not None and best_ask is not None:
+                best_bid, best_ask = 1 - best_ask, 1 - best_bid
+                best_bid_size, best_ask_size = best_ask_size, best_bid_size
+            if second_best_bid is not None:
+                second_best_bid = 1 - second_best_bid
+            if second_best_ask is not None:
+                second_best_ask = 1 - second_best_ask
+            if top_bid is not None:
+                top_bid = 1 - top_bid
+            if top_ask is not None:
+                top_ask = 1 - top_ask
+            bid_sum_within_n_percent, ask_sum_within_n_percent = ask_sum_within_n_percent, bid_sum_within_n_percent
+
+
+
+    #return as dictionary
+    return {
+        'best_bid': best_bid,
+        'best_bid_size': best_bid_size,
+        'second_best_bid': second_best_bid,
+        'second_best_bid_size': second_best_bid_size,
+        'top_bid': top_bid,
+        'best_ask': best_ask,
+        'best_ask_size': best_ask_size,
+        'second_best_ask': second_best_ask,
+        'second_best_ask_size': second_best_ask_size,
+        'top_ask': top_ask,
+        'bid_sum_within_n_percent': bid_sum_within_n_percent,
+        'ask_sum_within_n_percent': ask_sum_within_n_percent
+    }
+
+
+def find_best_price_with_size(price_dict, min_size, reverse=False):
+    lst = list(price_dict.items())
+
+    if reverse:
+        lst.reverse()
+    
+    best_price, best_size = None, None
+    second_best_price, second_best_size = None, None
+    top_price = None
+    set_best = False
+
+    for price, size in lst:
+        if top_price is None:
+            top_price = price
+
+        if set_best:
+            second_best_price, second_best_size = price, size
+            break
+
+        if size > min_size:
+            if best_price is None:
+                best_price, best_size = price, size
+                set_best = True
+
+    return best_price, best_size, second_best_price, second_best_size, top_price
+
+def get_reward_optimized_price(mid_price, max_spread, tick_size, side='buy'):
+    """
+    Calculate the price that optimizes Polymarket maker rewards.
+
+    Polymarket's reward formula: S = ((v - s) / v)^2
+    Where:
+        v = max_spread / 100 (maximum spread in decimal form)
+        s = |price - mid_price| (distance from mid price)
+
+    The reward is maximized when the price is placed at an optimal distance
+    from the mid price, balancing reward rate with fill probability.
+
+    Args:
+        mid_price (float): Current mid-market price
+        max_spread (float): Maximum spread percentage for rewards (e.g., 5 for 5%)
+        tick_size (float): Minimum price increment
+        side (str): 'buy' or 'sell'
+
+    Returns:
+        float: Optimal price rounded to tick_size
+    """
+    v = max_spread / 100  # Convert to decimal
+
+    # Optimal distance is approximately 15% of max spread
+    # More aggressive to stay competitive and get faster fills
+    optimal_distance = v * 0.15
+
+    if side == 'buy':
+        optimal_price = mid_price - optimal_distance
+    else:  # sell
+        optimal_price = mid_price + optimal_distance
+
+    # Round to tick size
+    if optimal_price > 0:
+        optimal_price = round(optimal_price / tick_size) * tick_size
+        optimal_price = round(optimal_price, len(str(tick_size).split('.')[1]) if '.' in str(tick_size) else 0)
+
+    return optimal_price
+
+
+def get_order_prices(best_bid, best_bid_size, top_bid,  best_ask, best_ask_size, top_ask, avgPrice, row):
+    """
+    Calculate optimal bid and ask prices considering:
+    1. Current order book state
+    2. Polymarket reward optimization
+    3. Market liquidity
+    """
+
+    # Calculate mid price for reward optimization
+    mid_price = (top_bid + top_ask) / 2
+
+    # Get reward-optimized prices
+    reward_bid = get_reward_optimized_price(mid_price, row['max_spread'], row['tick_size'], 'buy')
+    reward_ask = get_reward_optimized_price(mid_price, row['max_spread'], row['tick_size'], 'sell')
+
+    # Start with competitive prices (just inside best bid/ask)
+    bid_price = best_bid + row['tick_size']
+    ask_price = best_ask - row['tick_size']
+
+    # If liquidity is low, match the best price
+    if best_bid_size < row['min_size'] * 1.5:
+        bid_price = best_bid
+
+    if best_ask_size < 250 * 1.5:
+        ask_price = best_ask
+
+    # Blend reward-optimized price with competitive price
+    # Weight towards reward price if we're already competitive
+    if bid_price < reward_bid:
+        # We can move closer to reward-optimized price
+        bid_price = max(bid_price, reward_bid - row['tick_size'])
+
+    if ask_price > reward_ask:
+        # We can move closer to reward-optimized price
+        ask_price = min(ask_price, reward_ask + row['tick_size'])
+
+    # Sanity checks: don't cross the spread
+    if bid_price >= top_ask:
+        bid_price = top_bid
+
+    if ask_price <= top_bid:
+        ask_price = top_ask
+
+    if bid_price == ask_price:
+        bid_price = top_bid
+        ask_price = top_ask
+
+    # Ensure sell price is above average cost
+    if ask_price <= avgPrice and avgPrice > 0:
+        ask_price = avgPrice
+
+    return bid_price, ask_price
+
+
+
+
+def round_down(number, decimals):
+    factor = 10 ** decimals
+    return math.floor(number * factor) / factor
+
+def round_up(number, decimals):
+    factor = 10 ** decimals
+    return math.ceil(number * factor) / factor
+
+def get_buy_sell_amount(position, bid_price, row, other_token_position=0):
+    import os
+    buy_amount = 0
+    sell_amount = 0
+
+    # Get max_size, defaulting to trade_size if not specified
+    max_size = row.get('max_size', row['trade_size'])
+    trade_size = row['trade_size']
+    
+    # Check if two-sided market making mode is enabled
+    TWO_SIDED_MARKET_MAKING = os.getenv('TWO_SIDED_MARKET_MAKING', 'false').lower() == 'true'
+    
+    # Calculate total exposure across both sides
+    total_exposure = position + other_token_position
+    
+    # If we haven't reached max_size on either side, continue building
+    if position < max_size:
+        # Continue quoting trade_size amounts until we reach max_size
+        remaining_to_max = max_size - position
+        buy_amount = min(trade_size, remaining_to_max)
+        
+        # TWO-SIDED MARKET MAKING MODE: Place sell orders even without position
+        if TWO_SIDED_MARKET_MAKING:
+            # For true market making, always quote both sides
+            # Sell amount = trade_size (even if position = 0, for market making liquidity)
+            sell_amount = trade_size
+        else:
+            # ORIGINAL BEHAVIOR: Only sell if we have substantial position (to allow for exit when needed)
+            if position >= trade_size:
+                sell_amount = min(position, trade_size)
+            else:
+                sell_amount = 0
+    else:
+        # We've reached max_size, implement progressive exit strategy
+        # Always offer to sell trade_size amount when at max_size
+        sell_amount = min(position, trade_size)
+        
+        # Continue quoting to buy if total exposure warrants it
+        if total_exposure < max_size * 2:  # Allow some flexibility for market making
+            buy_amount = trade_size
+        else:
+            buy_amount = 0
+
+    # Ensure minimum order size compliance
+    if buy_amount > 0.7 * row['min_size'] and buy_amount < row['min_size']:
+        buy_amount = row['min_size']
+
+    # Apply multiplier for low-priced assets
+    if bid_price < 0.1 and buy_amount > 0:
+        multiplier = row.get('multiplier', '')
+        if multiplier != '' and multiplier is not None:
+            try:
+                print(f"Multiplying buy amount by {int(multiplier)}")
+                buy_amount = buy_amount * int(multiplier)
+            except (ValueError, TypeError):
+                pass  # Skip if multiplier is invalid
+
+    return buy_amount, sell_amount
+
