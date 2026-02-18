@@ -155,7 +155,11 @@ class PolymarketClient:
 
     def get_pos_balance(self):
         res = requests.get(f'https://data-api.polymarket.com/value?user={self.browser_wallet}')
-        return float(res.json()['value'])
+        data = res.json()
+        # API returns a list, extract value from first item
+        if isinstance(data, list) and len(data) > 0:
+            return float(data[0].get('value', 0))
+        return float(data.get('value', 0)) if isinstance(data, dict) else 0
 
     def get_total_balance(self):
         return self.get_usdc_balance() + self.get_pos_balance()
