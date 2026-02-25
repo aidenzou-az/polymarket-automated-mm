@@ -1,15 +1,15 @@
 """
-Reward Tracker - Estimates and logs maker rewards for each market
+Reward Tracker - Estimates and logs maker rewards to SQLite
 """
 
 import time
 from datetime import datetime
 import poly_data.global_state as global_state
-from poly_data.gspread import get_spreadsheet
+from poly_data.hybrid_storage import get_hybrid_storage
 import traceback
 
-_reward_worksheet = None
-_reward_spreadsheet = None
+# Cache storage client
+_storage = None
 _last_snapshot_time = {}
 
 
@@ -31,8 +31,8 @@ def estimate_order_reward(price, size, mid_price, max_spread, daily_rate):
 
 
 def log_market_snapshot(market_id, market_name):
-    """Log a snapshot of current orders and estimate rewards for a market."""
-    global _reward_worksheet, _reward_spreadsheet, _last_snapshot_time
+    """Log a snapshot of current orders and estimate rewards for a market to SQLite."""
+    global _storage, _last_snapshot_time
 
     try:
         current_time = time.time()
@@ -49,24 +49,11 @@ def log_market_snapshot(market_id, market_name):
             return
         market_row = market_row.iloc[0]
 
-        if _reward_spreadsheet is None:
-            _reward_spreadsheet = get_spreadsheet()
+        # Initialize storage if needed
+        if _storage is None:
+            _storage = get_hybrid_storage()
 
-        if _reward_worksheet is None:
-            try:
-                _reward_worksheet = _reward_spreadsheet.worksheet('Maker Rewards')
-            except:
-                _reward_worksheet = _reward_spreadsheet.add_worksheet(
-                    title='Maker Rewards', rows=10000, cols=15
-                )
-                headers = [
-                    'Timestamp', 'Market', 'Token', 'Side', 'Open Orders',
-                    'Order Price', 'Mid Price', 'Distance from Mid',
-                    'Position Size', 'Est. Hourly Reward ($)', 'Daily Rate',
-                    'Max Spread %', 'Status'
-                ]
-                _reward_worksheet.update('A1', [headers])
-
+        # Calculate mid price
         if market_id in global_state.all_data:
             bids = global_state.all_data[market_id]['bids']
             asks = global_state.all_data[market_id]['asks']
@@ -79,6 +66,8 @@ def log_market_snapshot(market_id, market_name):
         else:
             mid_price = 0.5
 
+        timestamp = datetime.now().isoformat()
+
         for token_name in ['token1', 'token2']:
             token_id = str(market_row[token_name])
             answer = market_row['answer1'] if token_name == 'token1' else market_row['answer2']
@@ -90,32 +79,42 @@ def log_market_snapshot(market_id, market_name):
                     orders['buy']['price'], orders['buy']['size'], mid_price,
                     market_row['max_spread'], market_row['rewards_daily_rate']
                 )
-                # Convert all values to native Python types for JSON serialization
-                row = [
-                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    str(market_name)[:80], str(answer)[:30], 'BUY', float(orders['buy']['size']),
-                    float(orders['buy']['price']), float(mid_price),
-                    float(abs(orders['buy']['price'] - mid_price)), float(position['size']),
-                    float(round(buy_reward, 4)), float(market_row['rewards_daily_rate']),
-                    float(market_row['max_spread']), 'Active'
-                ]
-                _reward_worksheet.append_row(row, value_input_option='USER_ENTERED')
+                snapshot_data = {
+                    'timestamp': timestamp,
+                    'condition_id': market_id,
+                    'token_id': token_id,
+                    'side': 'BUY',
+                    'order_price': float(orders['buy']['price']),
+                    'mid_price': float(mid_price),
+                    'distance_from_mid': float(abs(orders['buy']['price'] - mid_price)),
+                    'position_size': float(position['size']),
+                    'estimated_hourly_reward': float(round(buy_reward, 4)),
+                    'daily_rate': float(market_row['rewards_daily_rate']),
+                    'max_spread': float(market_row['max_spread']),
+                    'market_name': str(market_name)[:80]
+                }
+                _storage.log_reward_snapshot(snapshot_data)
 
             if orders['sell']['size'] > 0:
                 sell_reward = estimate_order_reward(
                     orders['sell']['price'], orders['sell']['size'], mid_price,
                     market_row['max_spread'], market_row['rewards_daily_rate']
                 )
-                # Convert all values to native Python types for JSON serialization
-                row = [
-                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    str(market_name)[:80], str(answer)[:30], 'SELL', float(orders['sell']['size']),
-                    float(orders['sell']['price']), float(mid_price),
-                    float(abs(orders['sell']['price'] - mid_price)), float(position['size']),
-                    float(round(sell_reward, 4)), float(market_row['rewards_daily_rate']),
-                    float(market_row['max_spread']), 'Active'
-                ]
-                _reward_worksheet.append_row(row, value_input_option='USER_ENTERED')
+                snapshot_data = {
+                    'timestamp': timestamp,
+                    'condition_id': market_id,
+                    'token_id': token_id,
+                    'side': 'SELL',
+                    'order_price': float(orders['sell']['price']),
+                    'mid_price': float(mid_price),
+                    'distance_from_mid': float(abs(orders['sell']['price'] - mid_price)),
+                    'position_size': float(position['size']),
+                    'estimated_hourly_reward': float(round(sell_reward, 4)),
+                    'daily_rate': float(market_row['rewards_daily_rate']),
+                    'max_spread': float(market_row['max_spread']),
+                    'market_name': str(market_name)[:80]
+                }
+                _storage.log_reward_snapshot(snapshot_data)
 
         print(f"Logged reward snapshot for {market_name[:50]}...")
         return True
@@ -126,8 +125,33 @@ def log_market_snapshot(market_id, market_name):
         return False
 
 
+def get_reward_history(hours=24, condition_id=None):
+    """
+    Get reward history from SQLite.
+
+    Args:
+        hours: Number of hours to look back
+        condition_id: Optional filter by market condition_id
+
+    Returns:
+        List of reward snapshot dictionaries
+    """
+    global _storage
+
+    try:
+        if _storage is None:
+            _storage = get_hybrid_storage()
+
+        # This would need to be implemented in local_storage.py
+        # For now, return empty list
+        return []
+    except Exception as e:
+        print(f"Failed to get reward history: {e}")
+        return []
+
+
 def reset_reward_cache():
-    """Reset the cached worksheet"""
-    global _reward_worksheet, _reward_spreadsheet
-    _reward_worksheet = None
-    _reward_spreadsheet = None
+    """Reset the cached storage"""
+    global _storage, _last_snapshot_time
+    _storage = None
+    _last_snapshot_time = {}

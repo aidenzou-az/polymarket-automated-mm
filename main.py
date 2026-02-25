@@ -1,9 +1,9 @@
-import gc  # Garbage collection
-import time  # Time functions
-import asyncio  # Asynchronous I/O
-import traceback  # Exception handling
-import logging  # Logging for debugging
-import pandas as pd  # For reading Google Sheets
+import gc
+import time
+import asyncio
+import traceback
+import logging
+import pandas as pd
 from poly_data.polymarket_client import PolymarketClient
 from poly_data.data_utils import update_markets, update_positions, update_orders
 from poly_data.websocket_handlers import connect_market_websocket, connect_user_websocket
@@ -11,7 +11,6 @@ import poly_data.global_state as global_state
 from poly_data.data_processing import remove_from_performing
 from poly_data.position_snapshot import log_position_snapshot
 from dotenv import load_dotenv
-from data_updater.google_utils import get_spreadsheet  # Import to access Google Sheet
 
 # Configure logging
 logging.basicConfig(

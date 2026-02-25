@@ -1,23 +1,26 @@
 import pandas as pd
 from py_clob_client.headers.headers import create_level_2_headers
 from py_clob_client.clob_types import RequestArgs
-
-from poly_utils.google_utils import get_spreadsheet
-from gspread_dataframe import set_with_dataframe
 import requests
 import json
 import os
 
 from dotenv import load_dotenv
+from poly_data.airtable_client import AirtableClient
+
 load_dotenv()
 
-spreadsheet = get_spreadsheet()
+# Initialize Airtable client
+airtable = AirtableClient()
 
-def get_markets_df(wk_full):
-    markets_df = pd.DataFrame(wk_full.get_all_records())
-    markets_df = markets_df[['question', 'answer1', 'answer2', 'token1', 'token2']]
-    markets_df['token1'] = markets_df['token1'].astype(str)
-    markets_df['token2'] = markets_df['token2'].astype(str)
+def get_markets_df():
+    """Get markets from Airtable"""
+    markets = airtable.get_all_markets()
+    markets_df = pd.DataFrame(markets)
+    if not markets_df.empty:
+        markets_df = markets_df[['question', 'answer1', 'answer2', 'token1', 'token2']]
+        markets_df['token1'] = markets_df['token1'].astype(str)
+        markets_df['token2'] = markets_df['token2'].astype(str)
     return markets_df
 
 def get_all_orders(client):

@@ -1,8 +1,53 @@
 import poly_data.global_state as global_state
-import poly_data.global_state as global_state
-from poly_data.utils import get_sheet_df
 import time
 import pandas as pd
+
+# Import Airtable client for fetching configs
+def get_trading_configs_from_airtable():
+    """Get trading configurations from Airtable"""
+    from poly_data.airtable_client import AirtableClient
+
+    try:
+        client = AirtableClient()
+        configs = client.get_trading_configs()
+        markets = client.get_active_markets()
+
+        if not configs:
+            print("Warning: No trading configs found in Airtable")
+            return pd.DataFrame(), {}
+
+        # Create DataFrames
+        df_configs = pd.DataFrame(configs)
+        df_markets = pd.DataFrame(markets) if markets else pd.DataFrame()
+
+        # Merge configs with market data
+        if len(df_markets) > 0 and 'condition_id' in df_configs.columns:
+            df_merged = df_configs.merge(
+                df_markets,
+                on='condition_id',
+                how='left',
+                suffixes=('', '_market')
+            )
+            # Fill missing data from market
+            if 'question_market' in df_merged.columns:
+                df_merged['question'] = df_merged['question'].fillna(df_merged['question_market'])
+        else:
+            df_merged = df_configs
+
+        # Build hyperparams from param_types
+        hyperparams = {}
+        for param_type in df_merged['param_type'].unique():
+            if param_type and pd.notna(param_type):
+                hyperparams[param_type] = {}
+
+        print(f"Loaded {len(df_merged)} markets from Airtable")
+        print(f"Hyperparameter types: {list(hyperparams.keys())}")
+
+        return df_merged, hyperparams
+
+    except Exception as e:
+        print(f"Error loading from Airtable: {e}")
+        return pd.DataFrame(), {}
 
 #sth here seems to be removing the position
 def update_positions(avgOnly=False):
@@ -146,7 +191,9 @@ def set_order(token, side, size, price):
 
 
 def update_markets():
-    received_df, received_params = get_sheet_df()
+    """Update markets from Airtable"""
+    received_df, received_params = get_trading_configs_from_airtable()
+
     # Ensure global_state.df is a DataFrame
     if not isinstance(global_state.df, pd.DataFrame):
         global_state.df = pd.DataFrame(columns=['question', 'token1', 'token2', 'condition_id'])
@@ -155,7 +202,7 @@ def update_markets():
     if len(received_df) > 0:
         global_state.df, global_state.params = received_df.copy(), received_params
     else:
-        print("No markets received from sheets. Keeping empty DataFrame.")
+        print("No markets received from Airtable. Keeping empty DataFrame.")
         global_state.df = pd.DataFrame(columns=['question', 'token1', 'token2', 'condition_id'])
         global_state.params = received_params
 
@@ -167,7 +214,6 @@ def update_markets():
             if row['token1'] not in global_state.all_tokens:
                 global_state.all_tokens.append(row['token1'])
             # Add tokens AND condition_id to subscribed_assets for trading
-            # WebSocket subscriptions use token IDs but data comes with condition_id as market field
             global_state.subscribed_assets.add(str(row['token1']))
             global_state.subscribed_assets.add(str(row['token2']))
             global_state.subscribed_assets.add(str(row['condition_id']))

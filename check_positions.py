@@ -16,8 +16,8 @@ from poly_data.polymarket_client import PolymarketClient
 import pandas as pd
 import requests
 from datetime import datetime
-from poly_data.gspread import get_spreadsheet
-import gspread
+from poly_data.local_storage import LocalStorage
+from poly_data.airtable_client import AirtableClient
 
 load_dotenv()
 
@@ -181,31 +181,14 @@ def check_trade_history(wallet_address):
         print(f"❌ Error getting trade history: {e}")
 
 
-def export_to_sheets(client, wallet_address):
-    """Export position data to Google Sheets."""
-    print_section("EXPORTING TO GOOGLE SHEETS")
+def export_to_storage(client, wallet_address):
+    """Export position data to SQLite and Airtable."""
+    print_section("EXPORTING POSITION DATA")
 
     try:
-        # Get spreadsheet
-        sheet = get_spreadsheet()
-
-        # Try to get or create "Position Snapshots" worksheet
-        try:
-            worksheet = sheet.worksheet("Position Snapshots")
-            print("✓ Found existing 'Position Snapshots' tab")
-        except gspread.exceptions.WorksheetNotFound:
-            # Create new worksheet with headers
-            worksheet = sheet.add_worksheet(title="Position Snapshots", rows=1000, cols=15)
-            headers = [
-                "Timestamp", "Wallet", "USDC Balance", "Position Value", "Total Balance",
-                "Market", "Outcome", "Token ID", "Size", "Avg Price", "Market Price",
-                "P&L ($)", "P&L (%)", "Position Value", "Order Count"
-            ]
-            worksheet.append_row(headers)
-            print("✓ Created new 'Position Snapshots' tab")
-
-        # Collect current snapshot data
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # Initialize storage
+        sqlite = LocalStorage()
+        airtable = AirtableClient()
 
         # Get balances
         try:
@@ -227,48 +210,38 @@ def export_to_sheets(client, wallet_address):
         except:
             order_count = 0
 
-        # Prepare rows to append
-        rows_to_add = []
+        # Log positions to SQLite
+        timestamp = datetime.now().isoformat()
+        positions_logged = 0
 
         if positions.empty:
-            # Add summary row even if no positions
-            rows_to_add.append([
-                timestamp, wallet_address, f"{usdc_balance:.2f}", f"{pos_balance:.2f}",
-                f"{total_balance:.2f}", "No Positions", "", "", "", "", "", "", "", "", order_count
-            ])
+            print("ℹ️  No positions to log")
         else:
-            # Add row for each position
             for idx, pos in positions.iterrows():
-                size = float(pos.get('size', 0))
-                avg_price = float(pos.get('averagePrice', 0))
-                market_price = float(pos.get('marketPrice', 0))
+                position_data = {
+                    'timestamp': timestamp,
+                    'token_id': str(pos.get('asset_id', '')),
+                    'size': float(pos.get('size', 0)),
+                    'avg_price': float(pos.get('averagePrice', 0)),
+                    'market_price': float(pos.get('marketPrice', 0)),
+                    'pnl': float(pos.get('pnl', 0)),
+                    'market_name': str(pos.get('market', ''))[:100],
+                    'condition_id': ''
+                }
+                sqlite.log_position(position_data)
+                positions_logged += 1
 
-                # Calculate P&L
-                pnl_per_share = market_price - avg_price
-                total_pnl = pnl_per_share * size
-                pnl_percent = (pnl_per_share / avg_price * 100) if avg_price > 0 else 0
+            print(f"✅ Logged {positions_logged} positions to SQLite")
 
-                outcome = pos.get('outcome', 'Unknown')
-                market = pos.get('market', 'Unknown')
-                token_id = pos.get('asset_id', 'Unknown')
-                position_value = size * market_price
+        # Send alert to Airtable
+        message = f"Position check: {positions_logged} positions, ${total_balance:.2f} total"
+        airtable.send_alert('info', message, f"USDC: ${usdc_balance:.2f}, Positions: ${pos_balance:.2f}")
+        print(f"✅ Sent alert to Airtable")
 
-                rows_to_add.append([
-                    timestamp, wallet_address, f"{usdc_balance:.2f}", f"{pos_balance:.2f}",
-                    f"{total_balance:.2f}", market[:100], outcome, token_id, f"{size:.2f}",
-                    f"{avg_price:.4f}", f"{market_price:.4f}", f"{total_pnl:.2f}",
-                    f"{pnl_percent:.2f}", f"{position_value:.2f}", order_count
-                ])
-
-        # Append all rows
-        if rows_to_add:
-            worksheet.append_rows(rows_to_add)
-            print(f"✅ Exported {len(rows_to_add)} row(s) to Google Sheets")
-            print(f"   Spreadsheet: {sheet.url}")
-            print(f"   Tab: Position Snapshots")
+        sqlite.close()
 
     except Exception as e:
-        print(f"❌ Error exporting to Google Sheets: {e}")
+        print(f"❌ Error exporting data: {e}")
         import traceback
         traceback.print_exc()
 
@@ -293,7 +266,7 @@ def main():
     check_trade_history(wallet_address)
 
     # Export to Google Sheets
-    export_to_sheets(client, wallet_address)
+    export_to_storage(client, wallet_address)
 
     print_section("DONE")
     print()

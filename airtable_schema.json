@@ -1,0 +1,333 @@
+{
+  "tables": [
+    {
+      "name": "Markets",
+      "fields": [
+        {
+          "name": "condition_id",
+          "type": "singleLineText",
+          "options": {}
+        },
+        {
+          "name": "question",
+          "type": "singleLineText",
+          "options": {}
+        },
+        {
+          "name": "answer1",
+          "type": "singleLineText",
+          "options": {}
+        },
+        {
+          "name": "answer2",
+          "type": "singleLineText",
+          "options": {}
+        },
+        {
+          "name": "token1",
+          "type": "singleLineText",
+          "options": {}
+        },
+        {
+          "name": "token2",
+          "type": "singleLineText",
+          "options": {}
+        },
+        {
+          "name": "neg_risk",
+          "type": "checkbox",
+          "options": {
+            "color": "greenBright",
+            "icon": "check"
+          }
+        },
+        {
+          "name": "best_bid",
+          "type": "number",
+          "options": {
+            "precision": 4
+          }
+        },
+        {
+          "name": "best_ask",
+          "type": "number",
+          "options": {
+            "precision": 4
+          }
+        },
+        {
+          "name": "spread",
+          "type": "number",
+          "options": {
+            "precision": 4
+          }
+        },
+        {
+          "name": "gm_reward_per_100",
+          "type": "percent",
+          "options": {
+            "precision": 2
+          }
+        },
+        {
+          "name": "rewards_daily_rate",
+          "type": "number",
+          "options": {
+            "precision": 2
+          }
+        },
+        {
+          "name": "volatility_sum",
+          "type": "number",
+          "options": {
+            "precision": 2
+          }
+        },
+        {
+          "name": "min_size",
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        },
+        {
+          "name": "max_spread",
+          "type": "number",
+          "options": {
+            "precision": 4
+          }
+        },
+        {
+          "name": "tick_size",
+          "type": "number",
+          "options": {
+            "precision": 3
+          }
+        },
+        {
+          "name": "market_slug",
+          "type": "singleLineText",
+          "options": {}
+        },
+        {
+          "name": "status",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "name": "active",
+                "color": "greenBright2"
+              },
+              {
+                "name": "ended",
+                "color": "yellowBright2"
+              },
+              {
+                "name": "paused",
+                "color": "orangeBright2"
+              },
+              {
+                "name": "archived",
+                "color": "grayBright"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Trading Configs",
+      "fields": [
+        {
+          "name": "Name",
+          "type": "singleLineText",
+          "options": {}
+        },
+        {
+          "name": "market",
+          "type": "linkedRecord",
+          "options": {
+            "linkedTableName": "Markets",
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldName": "Trading Configs"
+          }
+        },
+        {
+          "name": "condition_id",
+          "type": "lookup",
+          "options": {
+            "recordLinkFieldName": "market",
+            "fieldNameInLinkedTable": "condition_id",
+            "resultType": "array"
+          }
+        },
+        {
+          "name": "question",
+          "type": "lookup",
+          "options": {
+            "recordLinkFieldName": "market",
+            "fieldNameInLinkedTable": "question",
+            "resultType": "array"
+          }
+        },
+        {
+          "name": "trade_size",
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        },
+        {
+          "name": "max_size",
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        },
+        {
+          "name": "param_type",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "name": "conservative",
+                "color": "blueBright2"
+              },
+              {
+                "name": "default",
+                "color": "yellowBright2"
+              },
+              {
+                "name": "aggressive",
+                "color": "redBright2"
+              }
+            ]
+          }
+        },
+        {
+          "name": "enabled",
+          "type": "checkbox",
+          "options": {
+            "color": "greenBright",
+            "icon": "check"
+          }
+        },
+        {
+          "name": "comments",
+          "type": "multilineText",
+          "options": {}
+        }
+      ]
+    },
+    {
+      "name": "Trade Summary",
+      "fields": [
+        {
+          "name": "date",
+          "type": "date",
+          "options": {
+            "dateFormat": "YYYY-MM-DD"
+          }
+        },
+        {
+          "name": "total_trades",
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        },
+        {
+          "name": "buy_count",
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        },
+        {
+          "name": "sell_count",
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        },
+        {
+          "name": "total_volume",
+          "type": "number",
+          "options": {
+            "precision": 2
+          }
+        },
+        {
+          "name": "total_pnl",
+          "type": "number",
+          "options": {
+            "precision": 2
+          }
+        },
+        {
+          "name": "avg_trade_size",
+          "type": "number",
+          "options": {
+            "precision": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "Alerts",
+      "fields": [
+        {
+          "name": "level",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "name": "info",
+                "color": "blueBright2"
+              },
+              {
+                "name": "warning",
+                "color": "yellowBright2"
+              },
+              {
+                "name": "error",
+                "color": "orangeBright2"
+              },
+              {
+                "name": "critical",
+                "color": "redBright2"
+              }
+            ]
+          }
+        },
+        {
+          "name": "message",
+          "type": "singleLineText",
+          "options": {}
+        },
+        {
+          "name": "details",
+          "type": "multilineText",
+          "options": {}
+        },
+        {
+          "name": "related_market",
+          "type": "linkedRecord",
+          "options": {
+            "linkedTableName": "Markets",
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldName": "Alerts"
+          }
+        },
+        {
+          "name": "acknowledged",
+          "type": "checkbox",
+          "options": {
+            "color": "greenBright",
+            "icon": "check"
+          }
+        }
+      ]
+    }
+  ]
+}

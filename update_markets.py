@@ -1,124 +1,35 @@
-import time
-import pandas as pd
-from data_updater.trading_utils import get_clob_client
-from data_updater.google_utils import get_spreadsheet
-from data_updater.find_markets import get_sel_df, get_all_markets, get_all_results, get_markets, add_volatility_to_df
-from gspread_dataframe import set_with_dataframe
-import traceback
-from dotenv import load_dotenv
+#!/usr/bin/env python3
+"""
+Update Markets - Fetches market data from Polymarket and updates Airtable
+This is a wrapper around data_updater/data_updater.py
+"""
+
+import sys
 import os
 
-# Load environment variables from .env file
-load_dotenv()
+# Use the main data_updater module
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Initialize global variables
-spreadsheet = get_spreadsheet()
-client = get_clob_client()
-
-wk_all = spreadsheet.worksheet("All Markets")
-wk_vol = spreadsheet.worksheet("Volatility Markets")
-wk_full = spreadsheet.worksheet("Full Markets")
-
-sel_df = get_sel_df(spreadsheet, "Selected Markets")
-
-def update_sheet(data, worksheet):
-    all_values = worksheet.get_all_values()
-    existing_num_rows = len(all_values)
-    existing_num_cols = len(all_values[0]) if all_values else 0
-
-    num_rows, num_cols = data.shape
-    max_rows = max(num_rows, existing_num_rows)
-    max_cols = max(num_cols, existing_num_cols)
-
-    padded_data = pd.DataFrame('', index=range(max_rows), columns=range(max_cols))
-    padded_data.iloc[:num_rows, :num_cols] = data.values
-    padded_data.columns = list(data.columns) + [''] * (max_cols - num_cols)
-    set_with_dataframe(worksheet, padded_data, include_index=False, include_column_header=True, resize=True)
-
-def sort_df(df):
-    mean_gm = df['gm_reward_per_100'].mean()
-    std_gm = df['gm_reward_per_100'].std()
-    mean_volatility = df['volatility_sum'].mean()
-    std_volatility = df['volatility_sum'].std()
-
-    df['std_gm_reward_per_100'] = (df['gm_reward_per_100'] - mean_gm) / std_gm
-    df['std_volatility_sum'] = (df['volatility_sum'] - mean_volatility) / std_volatility
-
-    def proximity_score(value):
-        if 0.1 <= value <= 0.25:
-            return (0.25 - value) / 0.15
-        elif 0.75 <= value <= 0.9:
-            return (value - 0.75) / 0.15
-        else:
-            return 0
-
-    df['bid_score'] = df['best_bid'].apply(proximity_score)
-    df['ask_score'] = df['best_ask'].apply(proximity_score)
-
-    df['composite_score'] = (
-            df['std_gm_reward_per_100'] -
-            df['std_volatility_sum'] +
-            df['bid_score'] +
-            df['ask_score']
-    )
-
-    sorted_df = df.sort_values(by='composite_score', ascending=False)
-    sorted_df = sorted_df.drop(
-        columns=['std_gm_reward_per_100', 'std_volatility_sum', 'bid_score', 'ask_score', 'composite_score'])
-
-    return sorted_df
-
-def fetch_and_process_data():
-    global spreadsheet, client, wk_all, wk_vol, wk_full, sel_df
-
-    spreadsheet = get_spreadsheet()
-    client = get_clob_client()
-    if not client:
-        raise Exception("Failed to initialize ClobClient")
-
-    wk_all = spreadsheet.worksheet("All Markets")
-    wk_vol = spreadsheet.worksheet("Volatility Markets")
-    wk_full = spreadsheet.worksheet("Full Markets")
-    sel_df = get_sel_df(spreadsheet, "Selected Markets")
-
-    all_df = get_all_markets(client)
-    print("Got all Markets")
-    all_results = get_all_results(all_df, client)
-    print("Got all Results")
-    m_data, all_markets = get_markets(all_results, sel_df, maker_reward=0.75)
-    print("Got all orderbook")
-
-    print(f'{pd.to_datetime("now")}: Fetched all markets data of length {len(all_markets)}.')
-    new_df = add_volatility_to_df(all_markets)
-    new_df['volatility_sum'] = new_df['24_hour'] + new_df['7_day'] + new_df['30_day']
-    new_df['volatility/reward'] = (new_df['gm_reward_per_100'] / new_df['volatility_sum']).round(2).astype(str)
-
-    new_df = new_df[
-        ['question', 'answer1', 'answer2', 'spread', 'rewards_daily_rate', 'gm_reward_per_100', 'sm_reward_per_100',
-         'bid_reward_per_100', 'ask_reward_per_100', 'volatility_sum', 'volatility/reward', 'min_size', '1_hour',
-         '3_hour', '6_hour', '12_hour', '24_hour', '7_day', '30_day', 'best_bid', 'best_ask', 'volatility_price',
-         'max_spread', 'tick_size', 'neg_risk', 'market_slug', 'token1', 'token2', 'condition_id']]
-
-    volatility_df = new_df.copy()
-    volatility_df = volatility_df[new_df['volatility_sum'] < 20]
-    volatility_df = volatility_df.sort_values('gm_reward_per_100', ascending=False)
-
-    new_df = new_df.sort_values('gm_reward_per_100', ascending=False)
-
-    print(f'{pd.to_datetime("now")}: Fetched select market of length {len(new_df)}.')
-
-    # Always update sheets for testing
-    update_sheet(new_df, wk_all)
-    update_sheet(volatility_df, wk_vol)
-    update_sheet(m_data, wk_full)
-    print(f'{pd.to_datetime("now")}: Updated all sheets.')
+from data_updater.data_updater import fetch_and_process_data
+import traceback
+import time
 
 if __name__ == "__main__":
-    while True:
-        try:
-            fetch_and_process_data()
-            time.sleep(60 * 60)  # Sleep for an hour
-        except Exception as e:
-            traceback.print_exc()
-            print(f"Error: {str(e)}")
-            time.sleep(60)  # Retry after 1 minute
+    print("=" * 80)
+    print("Market Data Updater")
+    print("=" * 80)
+    print("\nThis script fetches market data from Polymarket and updates Airtable.")
+    print("Running once...\n")
+
+    try:
+        fetch_and_process_data()
+        print("\n✓ Market data updated successfully!")
+        print("  Check Airtable 'Markets' table for results.")
+        print("  CSV backups saved to data/ directory.")
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+        traceback.print_exc()
+        sys.exit(1)
+
+    print("\nTo run continuously (updating every hour), use:")
+    print("  python data_updater/data_updater.py")

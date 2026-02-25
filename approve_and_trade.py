@@ -9,7 +9,7 @@ This script:
 
 from dotenv import load_dotenv
 from poly_data.polymarket_client import PolymarketClient
-from poly_data.gspread import get_spreadsheet
+from poly_data.airtable_client import AirtableClient
 import pandas as pd
 import os
 from eth_account import Account
@@ -67,9 +67,22 @@ def main():
     # Step 2: Place order
     print("Step 2: Placing test order...")
 
-    spreadsheet = get_spreadsheet()
-    all_markets = pd.DataFrame(spreadsheet.worksheet('All Markets').get_all_records())
-    market = all_markets[all_markets['question'] == 'Trump–Putin Meeting in Hungary by Dec 31?'].iloc[0]
+    # Get market from Airtable
+    airtable = AirtableClient()
+    markets = airtable.get_all_markets()
+    all_markets = pd.DataFrame(markets)
+
+    if all_markets.empty:
+        print("❌ No markets found in Airtable")
+        print("   Please run: python data_updater/data_updater.py")
+        return
+
+    # Find a specific market or use first available
+    market_filter = all_markets['question'].str.contains('Trump|Hungary', case=False, na=False)
+    if market_filter.any():
+        market = all_markets[market_filter].iloc[0]
+    else:
+        market = all_markets.iloc[0]
 
     print(f"Market: {market['question']}")
     print(f"Price: ${float(market['best_ask']):.4f}")

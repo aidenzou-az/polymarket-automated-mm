@@ -1,6 +1,7 @@
 py-clob-client==0.20.0
 python-dotenv==1.0.0
 pandas
+numpy
 gspread
 gspread-dataframe
 sortedcontainers
@@ -20,3 +21,4 @@ streamlit>=1.28.0
 plotly>=5.18.0
 psutil>=5.9.0
 schedule>=1.2.0
+pyairtable>=2.0.0
