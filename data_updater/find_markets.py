@@ -1,23 +1,39 @@
 import pandas as pd
 import numpy as np
 import os
+import sys
 import requests
 import time
 import warnings
-warnings.filterwarnings("ignore")
 
+# Add parent directory to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+warnings.filterwarnings("ignore")
 
 if not os.path.exists('data'):
     os.makedirs('data')
 
-def get_sel_df(spreadsheet, sheet_name='Selected Markets'):
+def get_sel_df_from_airtable():
+    """Get selected markets from Airtable Trading Configs"""
     try:
-        wk2 = spreadsheet.worksheet(sheet_name)
-        sel_df = pd.DataFrame(wk2.get_all_records())
-        sel_df = sel_df[sel_df['question'] != ""].reset_index(drop=True)
-        return sel_df
-    except:
+        from poly_data.airtable_client import AirtableClient
+        client = AirtableClient()
+        configs = client.get_trading_configs()
+        if configs:
+            sel_df = pd.DataFrame(configs)
+            # Filter enabled configs
+            sel_df = sel_df[sel_df.get('enabled', True) == True]
+            return sel_df
         return pd.DataFrame()
+    except Exception as e:
+        print(f"Warning: Could not load from Airtable: {e}")
+        return pd.DataFrame()
+
+# Keep old function signature for compatibility but redirect to Airtable
+def get_sel_df(spreadsheet=None, sheet_name='Selected Markets'):
+    """Legacy function - now uses Airtable"""
+    return get_sel_df_from_airtable()
     
 def get_all_markets(client):
     cursor = ""
@@ -169,19 +185,23 @@ def process_single_row(row, client):
 
     bids_df = pd.DataFrame()
     bids_df['price'] = generate_numbers(bid_from, bid_to, TICK_SIZE)
+    bids_df['size'] = 0  # 初始化 size 列
 
     asks_df = pd.DataFrame()
     asks_df['price'] = generate_numbers(ask_from, ask_to, TICK_SIZE)
+    asks_df['size'] = 0  # 初始化 size 列
 
     try:
-        bids_df = bids_df.merge(bids, on='price', how='left').fillna(0)
+        if not bids.empty:
+            bids_df = bids_df.merge(bids, on='price', how='left').fillna(0)
     except:
-        bids_df = pd.DataFrame()
+        pass  # 保持 size=0 的默认值
 
     try:
-        asks_df = asks_df.merge(asks, on='price', how='left').fillna(0)
+        if not asks.empty:
+            asks_df = asks_df.merge(asks, on='price', how='left').fillna(0)
     except:
-        asks_df = pd.DataFrame()
+        pass  # 保持 size=0 的默认值
 
     best_bid_reward = 0
     ret_bid = pd.DataFrame()
