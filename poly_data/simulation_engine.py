@@ -245,23 +245,30 @@ class SimulationEngine:
 
         return fills
 
-    def process_market_update(self, token_id: str, market_data: Dict[str, Any]):
+    async def process_market_update(self, token_id: str, market_data: Dict[str, Any]) -> List[Fill]:
         """
         Process a market data update and check for fills on open orders.
 
         Args:
             token_id: The token that received an update
             market_data: Current market data
+
+        Returns:
+            List of fill events
         """
+        fills: List[Fill] = []
         open_orders = [
             order for order in self.virtual_orders.get(token_id, [])
             if order.status in (OrderStatus.OPEN, OrderStatus.PARTIALLY_FILLED)
         ]
 
         for order in open_orders:
-            fills = self.try_match_order(order, market_data)
-            for fill in fills:
+            order_fills = self.try_match_order(order, market_data)
+            for fill in order_fills:
                 self._process_fill(fill, order)
+                fills.append(fill)
+
+        return fills
 
     def _process_fill(self, fill: Fill, order: VirtualOrder):
         """
