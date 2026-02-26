@@ -333,7 +333,12 @@ async def perform_trade(market):
 
                 # Calculate mid price for reference
                 mid_price = (top_bid + top_ask) / 2
-                
+
+                # Check for invalid market data (Bid >= Ask indicates data issue)
+                if best_bid >= best_ask:
+                    print(f"\n⚠️  Skipping {detail['answer']}: Invalid market data (Bid {best_bid} >= Ask {best_ask})")
+                    continue
+
                 # Log market conditions for this outcome
                 print(f"\nFor {detail['answer']}. Orders: {orders} Position: {position}, "
                       f"avgPrice: {avgPrice}, Best Bid: {best_bid}, Best Ask: {best_ask}, "

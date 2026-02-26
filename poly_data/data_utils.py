@@ -40,10 +40,10 @@ def get_trading_configs_from_airtable():
             if param_type and pd.notna(param_type):
                 # Initialize with default parameters
                 hyperparams[param_type] = {
-                    'volatility_threshold': 0.02,  # Default 2% volatility threshold
+                    'volatility_threshold': 0.5,  # Default 50% volatility threshold (was 0.02)
                     'max_position_size': 250,      # Maximum position size
                     'min_position_size': 10,       # Minimum position size
-                    'price_deviation_limit': 0.05, # Price deviation limit (5%)
+                    'price_deviation_limit': 0.15, # Price deviation limit (15%)
                 }
 
         print(f"Loaded {len(df_merged)} markets from Airtable")
