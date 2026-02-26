@@ -123,6 +123,14 @@ def update_selected_markets(min_daily_reward=None, max_markets=None, replace_exi
 
         print(f"✓ Found {len(filtered)} markets with rewards >= ${min_daily_reward}/day\n")
 
+        # Also check gm_reward_per_100 to ensure actual tradable reward
+        min_gm_reward = 0.5  # Minimum 0.5% gm_reward_per_100 for trading
+        filtered = filtered[
+            (filtered['gm_reward_per_100'] >= min_gm_reward) |
+            (filtered['gm_reward_per_100'].isna())  # Allow if not calculated yet
+        ].copy()
+        print(f"✓ {len(filtered)} markets after gm_reward_per_100 >= {min_gm_reward}% filter\n")
+
         # Quality filters
         quality_filters = (
             (filtered['best_bid'] >= 0.1) &
