@@ -115,6 +115,21 @@ class PolymarketClient:
         Returns:
             dict: Response from the API containing order details, or empty dict on error
         """
+        # DRY_RUN mode: use simulation engine
+        if os.getenv("DRY_RUN", "false").lower() == "true":
+            import poly_data.global_state as global_state
+            if global_state.simulation_engine:
+                return global_state.simulation_engine.create_virtual_order(
+                    token_id=str(marketId),
+                    side=action,
+                    price=price,
+                    size=size,
+                    neg_risk=neg_risk
+                )
+            else:
+                print(f"[DRY RUN] Simulation engine not initialized")
+                return {'error': 'Simulation engine not initialized'}
+
         order_args = OrderArgs(
             token_id=str(marketId),
             price=price,
@@ -193,9 +208,23 @@ class PolymarketClient:
         return orders_df
 
     def cancel_all_asset(self, asset_id):
+        """Cancel all orders for an asset."""
+        if os.getenv("DRY_RUN", "false").lower() == "true":
+            import poly_data.global_state as global_state
+            if global_state.simulation_engine:
+                global_state.simulation_engine.cancel_all_orders(str(asset_id))
+                print(f"[DRY RUN] Cancelled all orders for asset {asset_id}")
+            return
         self.client.cancel_market_orders(asset_id=str(asset_id))
 
     def cancel_all_market(self, marketId):
+        """Cancel all orders for a market."""
+        if os.getenv("DRY_RUN", "false").lower() == "true":
+            import poly_data.global_state as global_state
+            if global_state.simulation_engine:
+                global_state.simulation_engine.cancel_all_orders()
+                print(f"[DRY RUN] Cancelled all orders for market {marketId}")
+            return
         self.client.cancel_market_orders(market=marketId)
 
     def merge_positions(self, amount_to_merge, condition_id, is_neg_risk_market):

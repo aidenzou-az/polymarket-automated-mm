@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 import threading
 import time
 
+import pandas as pd
+
 from poly_data.local_storage import LocalStorage
 from poly_data.airtable_client import AirtableClient, PYAIRTABLE_AVAILABLE
 
@@ -246,8 +248,6 @@ class HybridStorage:
         Returns:
             Tuple of (DataFrame, params dict)
         """
-        import pandas as pd
-
         configs = self.get_trading_configs(force_refresh)
 
         if not configs:

@@ -54,3 +54,11 @@ orders = {}
 # Format: {token_id: {'size': float, 'avgPrice': float}}
 positions = {}
 
+# ============ Simulation State (Dry Run) ============
+
+# Simulation engine instance (initialized in dry_run mode)
+simulation_engine = None
+
+# Local storage instance
+local_storage = None
+

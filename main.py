@@ -1,4 +1,5 @@
 import gc
+import os
 import time
 import asyncio
 import traceback
@@ -10,6 +11,7 @@ from poly_data.websocket_handlers import connect_market_websocket, connect_user_
 import poly_data.global_state as global_state
 from poly_data.data_processing import remove_from_performing
 from poly_data.position_snapshot import log_position_snapshot
+from poly_data.local_storage import LocalStorage
 from dotenv import load_dotenv
 
 # Configure logging
@@ -29,10 +31,10 @@ def update_once():
     """
     Initialize the application state by fetching market data, positions, and orders.
     """
-    update_markets()  # Get market information from Google Sheets
+    update_markets()  # Get market information from Airtable
     update_positions()  # Get current positions from Polymarket
     update_orders()  # Get current orders from Polymarket
-    logger.info(f"Loaded {len(global_state.df)} markets from All Markets sheet")
+    logger.info(f"Loaded {len(global_state.df)} markets from Airtable")
 
 def remove_from_pending():
     """
@@ -100,6 +102,31 @@ async def main():
         logger.error(traceback.format_exc())
         return
 
+    # Initialize local storage
+    try:
+        global_state.local_storage = LocalStorage()
+        logger.info("✓ Local storage initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize local storage: {e}")
+        return
+
+    # Initialize simulation engine if in DRY_RUN mode
+    if os.getenv('DRY_RUN', 'false').lower() == 'true':
+        try:
+            from poly_data.simulation_engine import SimulationEngine
+            initial_balance = float(os.getenv('SIMULATION_INITIAL_BALANCE', '10000'))
+            global_state.simulation_engine = SimulationEngine(
+                initial_balance=initial_balance,
+                storage=global_state.local_storage
+            )
+            print(f"🎮 DRY RUN MODE: 使用虚拟资金 ${initial_balance:,.2f}")
+            print(f"   模拟引擎已启动 - 所有交易将虚拟执行，不涉及真实资金")
+        except Exception as e:
+            print(f"❌ Failed to initialize simulation engine: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+
     # Initialize state and fetch initial data
     try:
         global_state.all_tokens = []
@@ -107,7 +134,7 @@ async def main():
         logger.info(f"After initial updates: orders={global_state.orders}, positions={global_state.positions}")
     except Exception as e:
         logger.error(f"❌ Failed to load initial market data: {e}")
-        logger.error("Please check your Google Sheets configuration and network connection.")
+        logger.error("Please check your Airtable configuration and network connection.")
         return
 
     # Subscribe to WebSocket using subscribed_assets (token IDs), not condition_ids

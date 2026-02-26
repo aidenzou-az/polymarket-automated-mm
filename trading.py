@@ -497,9 +497,10 @@ async def perform_trade(market):
                     # Trigger stop-loss if either:
                     # 1. PnL is below threshold and spread is tight enough to exit
                     # 2. Volatility is too high
-                    if (pnl < params['stop_loss_threshold'] and spread <= params['spread_threshold']) or row['3_hour'] > params['volatility_threshold']:
+                    volatility_3h = row.get('3_hour', 0)
+                    if (pnl < params['stop_loss_threshold'] and spread <= params['spread_threshold']) or volatility_3h > params['volatility_threshold']:
                         risk_details['msg'] = (f"Selling {pos_to_sell} because spread is {spread} and pnl is {pnl} "
-                                              f"and ratio is {ratio} and 3 hour volatility is {row['3_hour']}")
+                                              f"and ratio is {ratio} and 3 hour volatility is {volatility_3h}")
                         print("Stop loss Triggered: ", risk_details['msg'])
 
                         # Sell at market best bid to ensure execution
@@ -583,8 +584,9 @@ async def perform_trade(market):
                     if send_buy:
                         # RELAXED CONDITIONS FOR TESTING: Increased volatility threshold and price deviation
                         # Original: row['3_hour'] > params['volatility_threshold'] or price_change >= 0.05
-                        if row['3_hour'] > params['volatility_threshold'] * 2 or price_change >= 0.15:
-                            print(f'3 Hour Volatility of {row["3_hour"]} is greater than max volatility of '
+                        volatility_3h = row.get('3_hour', 0)
+                        if volatility_3h > params['volatility_threshold'] * 2 or price_change >= 0.15:
+                            print(f'3 Hour Volatility of {volatility_3h} is greater than max volatility of '
                                   f'{params["volatility_threshold"] * 2} or price of {order["price"]} is outside '
                                   f'0.15 of {sheet_value}. Cancelling all orders')
                             client.cancel_all_asset(order['token'])

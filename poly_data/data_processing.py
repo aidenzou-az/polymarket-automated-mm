@@ -1,4 +1,5 @@
 import json
+import os
 from sortedcontainers import SortedDict
 import poly_data.global_state as global_state
 import poly_data.CONSTANTS as CONSTANTS
@@ -77,7 +78,6 @@ async def process_data(json_datas, trade=True):
             subscribed_assets = getattr(global_state, 'subscribed_assets', set())
             if asset not in subscribed_assets:
                 # IN AGGRESSIVE MODE: Process ALL markets, not just subscribed ones
-                import os
                 if os.getenv('AGGRESSIVE_MODE', 'false').lower() != 'true':
                     logger.warning(f"Received data for unsubscribed market: {asset}, json_data: {json_data}")
                     continue
@@ -104,6 +104,17 @@ async def process_data(json_datas, trade=True):
                     price_level = float(data['price'])
                     new_size = float(data['size'])
                     process_price_change(asset, side, price_level, new_size)
+
+                # In DRY_RUN mode, trigger simulation engine to check for fills
+                if os.getenv('DRY_RUN', 'false').lower() == 'true' and global_state.simulation_engine:
+                    try:
+                        fills = await global_state.simulation_engine.process_market_update(
+                            asset, global_state.all_data.get(asset, {})
+                        )
+                        if fills:
+                            logger.info(f"🎮 [DRY RUN] {len(fills)} virtual order(s) filled for {asset}")
+                    except Exception as sim_e:
+                        logger.error(f"Error in simulation engine processing: {sim_e}")
 
                 # Rate limit trading on price changes to reduce order churn
                 if trade:

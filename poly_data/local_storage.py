@@ -217,6 +217,20 @@ class LocalStorage:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_time ON alerts(timestamp)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_level ON alerts(level)")
 
+            # Simulation balance history table - for dry run mode
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS simulation_balance (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    usdc_balance REAL NOT NULL,
+                    position_value REAL NOT NULL DEFAULT 0,
+                    total_value REAL NOT NULL,
+                    realized_pnl REAL NOT NULL DEFAULT 0,
+                    unrealized_pnl REAL NOT NULL DEFAULT 0
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sim_balance_time ON simulation_balance(timestamp)")
+
             conn.commit()
             conn.close()
 

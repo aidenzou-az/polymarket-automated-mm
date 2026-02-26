@@ -159,6 +159,13 @@ class AirtableClient:
                     'gm_reward_per_100': float(market.get('gm_reward_per_100', 0)),
                     'rewards_daily_rate': float(market.get('rewards_daily_rate', 0)),
                     'volatility_sum': float(market.get('volatility_sum', 0)),
+                    '1_hour': float(market.get('1_hour', 0)),
+                    '3_hour': float(market.get('3_hour', 0)),
+                    '6_hour': float(market.get('6_hour', 0)),
+                    '12_hour': float(market.get('12_hour', 0)),
+                    '24_hour': float(market.get('24_hour', 0)),
+                    '7_day': float(market.get('7_day', 0)),
+                    '30_day': float(market.get('30_day', 0)),
                     'min_size': float(market.get('min_size', 50)),
                     'max_spread': float(market.get('max_spread', 1.0)),
                     'tick_size': float(market.get('tick_size', 0.01)),
@@ -213,6 +220,13 @@ class AirtableClient:
                 'gm_reward_per_100': r['fields'].get('gm_reward_per_100', 0),
                 'rewards_daily_rate': r['fields'].get('rewards_daily_rate', 0),
                 'volatility_sum': r['fields'].get('volatility_sum', 0),
+                '1_hour': r['fields'].get('1_hour', 0),
+                '3_hour': r['fields'].get('3_hour', 0),
+                '6_hour': r['fields'].get('6_hour', 0),
+                '12_hour': r['fields'].get('12_hour', 0),
+                '24_hour': r['fields'].get('24_hour', 0),
+                '7_day': r['fields'].get('7_day', 0),
+                '30_day': r['fields'].get('30_day', 0),
                 'min_size': r['fields'].get('min_size', 50),
                 'max_spread': r['fields'].get('max_spread', 1.0),
                 'tick_size': r['fields'].get('tick_size', 0.01),
@@ -248,6 +262,13 @@ class AirtableClient:
                 'gm_reward_per_100': r['fields'].get('gm_reward_per_100', 0),
                 'rewards_daily_rate': r['fields'].get('rewards_daily_rate', 0),
                 'volatility_sum': r['fields'].get('volatility_sum', 0),
+                '1_hour': r['fields'].get('1_hour', 0),
+                '3_hour': r['fields'].get('3_hour', 0),
+                '6_hour': r['fields'].get('6_hour', 0),
+                '12_hour': r['fields'].get('12_hour', 0),
+                '24_hour': r['fields'].get('24_hour', 0),
+                '7_day': r['fields'].get('7_day', 0),
+                '30_day': r['fields'].get('30_day', 0),
                 'min_size': r['fields'].get('min_size', 50),
                 'max_spread': r['fields'].get('max_spread', 1.0),
                 'tick_size': r['fields'].get('tick_size', 0.01),
@@ -311,9 +332,16 @@ class AirtableClient:
         configs = []
         for r in records:
             fields = r['fields']
+            # Handle lookup fields which are returned as lists from Airtable
+            condition_id = fields.get('condition_id', '')
+            if isinstance(condition_id, list):
+                condition_id = condition_id[0] if condition_id else ''
+            question = fields.get('question', '')
+            if isinstance(question, list):
+                question = question[0] if question else ''
             configs.append({
-                'condition_id': fields.get('condition_id', ''),
-                'question': fields.get('question', ''),
+                'condition_id': condition_id,
+                'question': question,
                 'trade_size': fields.get('trade_size', 50),
                 'max_size': fields.get('max_size', 100),
                 'param_type': fields.get('param_type', 'default'),
@@ -335,10 +363,39 @@ class AirtableClient:
             True if successful
         """
         table = self._get_configs_table()
+        markets_table = self._get_markets_table()
 
+        condition_id = str(config.get('condition_id', ''))
+        question = str(config.get('question', ''))[:200]
+
+        # Find the market record by condition_id
+        market_record = None
+        if condition_id:
+            try:
+                from pyairtable.formulas import match
+                formula = match({'condition_id': condition_id})
+                markets = markets_table.all(formula=formula)
+                if markets:
+                    market_record = markets[0]
+            except Exception as e:
+                print(f"Warning: Could not find market for condition_id {condition_id}: {e}")
+
+        # Check if config already exists for this market
+        existing = []
+        if market_record:
+            try:
+                # Query by market link field
+                all_configs = table.all()
+                for cfg in all_configs:
+                    linked_markets = cfg['fields'].get('market', [])
+                    if market_record['id'] in linked_markets:
+                        existing.append(cfg)
+            except Exception as e:
+                print(f"Warning: Could not check existing configs: {e}")
+
+        # Build the record
         record = {
-            'condition_id': str(config.get('condition_id', '')),
-            'question': str(config.get('question', ''))[:200],
+            'Name': question[:50] if question else condition_id[:50],
             'trade_size': int(config.get('trade_size', 50)),
             'max_size': int(config.get('max_size', 100)),
             'param_type': config.get('param_type', 'default'),
@@ -346,9 +403,9 @@ class AirtableClient:
             'comments': str(config.get('comments', ''))[:500],
         }
 
-        # Check if config exists
-        formula = match({'condition_id': record['condition_id']})
-        existing = table.all(formula=formula)
+        # Add market link if found
+        if market_record:
+            record['market'] = [market_record['id']]
 
         if existing:
             table.update(existing[0]['id'], record)
