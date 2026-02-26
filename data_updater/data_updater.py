@@ -1,11 +1,43 @@
 """
 Market Data Updater - Fetches market data from Polymarket and stores in Airtable + SQLite
 """
+# === HTTP Timeout Patch (MUST be before importing py_clob_client) ===
+import os
+import requests
+from functools import wraps
+
+# Configuration from environment variables
+CONNECT_TIMEOUT = float(os.getenv('REQUEST_CONNECT_TIMEOUT', '5'))
+READ_TIMEOUT = float(os.getenv('REQUEST_READ_TIMEOUT', '15'))
+REQUEST_TIMEOUT = (CONNECT_TIMEOUT, READ_TIMEOUT)
+
+_original_request = requests.request
+
+@wraps(_original_request)
+def _patched_request(method, url, **kwargs):
+    """Add default timeout to all HTTP requests"""
+    if 'timeout' not in kwargs:
+        kwargs['timeout'] = REQUEST_TIMEOUT
+    return _original_request(method, url, **kwargs)
+
+requests.request = _patched_request
+
+# Also patch Session.request (used internally by third-party libraries)
+_original_session_request = requests.Session.request
+
+@wraps(_original_session_request)
+def _patched_session_request(self, method, url, **kwargs):
+    """Add default timeout to all session requests"""
+    if 'timeout' not in kwargs:
+        kwargs['timeout'] = REQUEST_TIMEOUT
+    return _original_session_request(self, method, url, **kwargs)
+
+requests.Session.request = _patched_session_request
+# ===================================================================
+
 import time
 import pandas as pd
-import os
 import sys
-import requests
 import warnings
 import json
 import traceback
@@ -351,7 +383,7 @@ def fetch_and_process_data():
         # Add volatility data
         new_df = add_volatility_to_df(new_df)
 
-        # Calculate volatility sum
+        # Calculate volatility sum (必须在 add_volatility_to_df 之后)
         if '24_hour' in new_df.columns:
             new_df['volatility_sum'] = new_df.get('24_hour', 0) + new_df.get('7_day', 0) + new_df.get('30_day', 0)
         else:
@@ -388,6 +420,13 @@ def fetch_and_process_data():
                 'gm_reward_per_100': float(row.get('gm_reward_per_100', 0)),
                 'rewards_daily_rate': float(row.get('rewards_daily_rate', 0)),
                 'volatility_sum': float(row.get('volatility_sum', 0)),
+                '1_hour': float(row.get('1_hour', 0)),
+                '3_hour': float(row.get('3_hour', 0)),
+                '6_hour': float(row.get('6_hour', 0)),
+                '12_hour': float(row.get('12_hour', 0)),
+                '24_hour': float(row.get('24_hour', 0)),
+                '7_day': float(row.get('7_day', 0)),
+                '30_day': float(row.get('30_day', 0)),
                 'min_size': float(row.get('min_size', 50)),
                 'max_spread': float(row.get('max_spread', 1.0)),
                 'tick_size': float(row.get('tick_size', 0.01)),
