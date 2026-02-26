@@ -84,7 +84,7 @@ async def process_data(json_datas, trade=True):
                 else:
                     logger.info(f"AGGRESSIVE MODE: Processing unsubscribed market: {asset}")
 
-            logger.info(f"Processing event_type: {event_type} for market: {asset}")
+            logger.debug(f"Processing event_type: {event_type} for market: {asset}")
 
             if event_type == 'book':
                 process_book_data(asset, json_data)
