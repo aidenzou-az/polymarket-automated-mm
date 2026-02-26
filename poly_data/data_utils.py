@@ -38,7 +38,13 @@ def get_trading_configs_from_airtable():
         hyperparams = {}
         for param_type in df_merged['param_type'].unique():
             if param_type and pd.notna(param_type):
-                hyperparams[param_type] = {}
+                # Initialize with default parameters
+                hyperparams[param_type] = {
+                    'volatility_threshold': 0.02,  # Default 2% volatility threshold
+                    'max_position_size': 250,      # Maximum position size
+                    'min_position_size': 10,       # Minimum position size
+                    'price_deviation_limit': 0.05, # Price deviation limit (5%)
+                }
 
         print(f"Loaded {len(df_merged)} markets from Airtable")
         print(f"Hyperparameter types: {list(hyperparams.keys())}")
