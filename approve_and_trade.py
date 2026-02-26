@@ -7,11 +7,40 @@ This script:
 2. Places a small test order
 """
 
+# === HTTP Timeout Patch (MUST be before importing libraries that use requests) ===
+import os
+import requests
+from functools import wraps
+
+CONNECT_TIMEOUT = float(os.getenv('REQUEST_CONNECT_TIMEOUT', '5'))
+READ_TIMEOUT = float(os.getenv('REQUEST_READ_TIMEOUT', '15'))
+REQUEST_TIMEOUT = (CONNECT_TIMEOUT, READ_TIMEOUT)
+
+_original_request = requests.request
+
+@wraps(_original_request)
+def _patched_request(method, url, **kwargs):
+    if 'timeout' not in kwargs:
+        kwargs['timeout'] = REQUEST_TIMEOUT
+    return _original_request(method, url, **kwargs)
+
+requests.request = _patched_request
+
+_original_session_request = requests.Session.request
+
+@wraps(_original_session_request)
+def _patched_session_request(self, method, url, **kwargs):
+    if 'timeout' not in kwargs:
+        kwargs['timeout'] = REQUEST_TIMEOUT
+    return _original_session_request(self, method, url, **kwargs)
+
+requests.Session.request = _patched_session_request
+# ===================================================================
+
 from dotenv import load_dotenv
 from poly_data.polymarket_client import PolymarketClient
 from poly_data.airtable_client import AirtableClient
 import pandas as pd
-import os
 from eth_account import Account
 
 load_dotenv()

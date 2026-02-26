@@ -3,14 +3,43 @@ import os
 import time
 import sys
 import json
+
+# === HTTP Timeout Patch (MUST be before importing py_clob_client) ===
+import requests
+from functools import wraps
+
+CONNECT_TIMEOUT = float(os.getenv('REQUEST_CONNECT_TIMEOUT', '5'))
+READ_TIMEOUT = float(os.getenv('REQUEST_READ_TIMEOUT', '15'))
+REQUEST_TIMEOUT = (CONNECT_TIMEOUT, READ_TIMEOUT)
+
+_original_request = requests.request
+
+@wraps(_original_request)
+def _patched_request(method, url, **kwargs):
+    if 'timeout' not in kwargs:
+        kwargs['timeout'] = REQUEST_TIMEOUT
+    return _original_request(method, url, **kwargs)
+
+requests.request = _patched_request
+
+_original_session_request = requests.Session.request
+
+@wraps(_original_session_request)
+def _patched_session_request(self, method, url, **kwargs):
+    if 'timeout' not in kwargs:
+        kwargs['timeout'] = REQUEST_TIMEOUT
+    return _original_session_request(self, method, url, **kwargs)
+
+requests.Session.request = _patched_session_request
+# ===================================================================
+
 from datetime import datetime
 from dotenv import load_dotenv
 from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import OrderArgs, OrderType
 from py_clob_client.order_builder.constants import BUY
-from web3 import Web3  # For USDC balance check
-from discord_webhook import DiscordWebhook  # Optional for alerts
-import requests  # For timeout in order book calls
+from web3 import Web3
+from discord_webhook import DiscordWebhook
 
 # Prevent running as a pytest test
 if 'pytest' in sys.modules:
