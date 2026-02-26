@@ -4,8 +4,41 @@ Update Selected Markets: Configure trading markets in Airtable
 Selects markets from Airtable Markets table and creates Trading Configs
 """
 
-import pandas as pd
+# === HTTP Timeout Patch (MUST be before importing libraries that use requests) ===
 import os
+import requests
+from functools import wraps
+
+# Configuration from environment variables
+CONNECT_TIMEOUT = float(os.getenv('REQUEST_CONNECT_TIMEOUT', '5'))
+READ_TIMEOUT = float(os.getenv('REQUEST_READ_TIMEOUT', '15'))
+REQUEST_TIMEOUT = (CONNECT_TIMEOUT, READ_TIMEOUT)
+
+_original_request = requests.request
+
+@wraps(_original_request)
+def _patched_request(method, url, **kwargs):
+    """Add default timeout to all HTTP requests"""
+    if 'timeout' not in kwargs:
+        kwargs['timeout'] = REQUEST_TIMEOUT
+    return _original_request(method, url, **kwargs)
+
+requests.request = _patched_request
+
+# Also patch Session.request (used internally by third-party libraries)
+_original_session_request = requests.Session.request
+
+@wraps(_original_session_request)
+def _patched_session_request(self, method, url, **kwargs):
+    """Add default timeout to all session requests"""
+    if 'timeout' not in kwargs:
+        kwargs['timeout'] = REQUEST_TIMEOUT
+    return _original_session_request(self, method, url, **kwargs)
+
+requests.Session.request = _patched_session_request
+# ===================================================================
+
+import pandas as pd
 import sys
 from dotenv import load_dotenv
 from datetime import datetime
