@@ -554,13 +554,15 @@ async def perform_trade(market):
                 # 2. Position is less than absolute cap (250)
                 # 3. Buy amount is above minimum size
                 # 4. Reward threshold passed (if reward data available)
-                if (position < max_size and position < 250 and buy_amount > 0 and 
+                if (position < max_size and position < 250 and buy_amount > 0 and
                     buy_amount >= row['min_size'] and reward_check_passed):
-                    # Get reference price from market data
-                    sheet_value = row['best_bid']
-
+                    # Use WebSocket real-time data for consistent price comparison
+                    # (instead of Airtable data which may be stale)
                     if detail['name'] == 'token2':
-                        sheet_value = 1 - row['best_ask']
+                        # For token2, use complementary prices from WebSocket data
+                        sheet_value = 1 - top_ask  # top_ask is already converted for token2 in get_best_bid_ask_deets
+                    else:
+                        sheet_value = top_bid
 
                     sheet_value = round(sheet_value, round_length)
                     order['size'] = buy_amount
